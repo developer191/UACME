@@ -1,12 +1,12 @@
 /*******************************************************************************
 *
-*  (C) COPYRIGHT AUTHORS, 2015 - 2018
+*  (C) COPYRIGHT AUTHORS, 2015 - 2019
 *
 *  TITLE:       WINDEFEND.C
 *
-*  VERSION:     3.00
+*  VERSION:     3.18
 *
-*  DATE:        02 Sep 2018
+*  DATE:        29 Mar 2019
 *
 *  MSE / Windows Defender anti-emulation part.
 *
@@ -34,7 +34,38 @@
 #include "shared.h"
 
 #pragma warning(push)
+#pragma warning(disable: 4055)
 #pragma warning(disable: 4152)
+
+/*
+
+WD Signatures
+
+Trojan:Win64/Bampeass.A
+
+Triggers:
+[ U C M ]   W u s a   f a i l e d   c o p y   H i b i k i
+% t e m p % \ H i b i k i . d l l
+E l e v a t i o n : A d m i n i s t r a t o r ! n e w : { 4 D 1 1 1 E 0 8 - C B F 7 - 4 f 1 2 - A 9 2 6 - 2 C 7 9 2 0 A F 5 2 F C }
+U A C M e   i n j e c t e d ,   F u b u k i   a t   y o u r   s e r v i c e
+
+
+Trojan:Win64/Bampeass.B
+
+Triggers:
+UACMe injected, Hibiki at your service.
+ucmLoadCallback, dll load %ws, DllBase = %
+
+
+Trojan:Win64/Bampeass.C
+
+Triggers:
+ucmLoadCallback, dll load %ws, DllBase = %p
+UACMe injected, Hibiki at your service.
+ucmLoadCallback, kernel32 base found
+
+*/
+
 
 //
 // General purpose hashes start here.
@@ -57,37 +88,17 @@
 // End of Kuma related hashes.
 //
 
-#define WD_HASH_TABLE_ITEMS 21
-
 DWORD wdxEmulatorAPIHashTable[] = {
-    0x3E3CBE69, //VFS_CopyFile
-    0x00633A7F, //VFS_DeleteFile
-    0x331245AB, //VFS_DeleteFileByHandle
-    0xE0A858CF, //VFS_FileExists
-    0xDC54FFE2, //VFS_FindClose
-    0x1C920626, //VFS_FindFirstFile
-    0xAA3ABE29, //VFS_FindNextFile
-    0xBAC05205, //VFS_FlushViewOfFile
-    0xDB9EFF5A, //VFS_GetAttrib
-    0xDBB23222, //VFS_GetHandle
-    0xDBA02E4A, //VFS_GetLength
-    0xEB0B0115, //VFS_MapViewOfFile
-    0x302ABE69, //VFS_MoveFile
-    0x5F831879, //VFS_Open
-    0x5F82E329, //VFS_Read
-    0x7B9EFF5A, //VFS_SetAttrib
-    0x5DC47852, //VFS_SetCurrentDir
-    0x7BA02E4A, //VFS_SetLength
-    0xBAC23515, //VFS_UnmapViewOfFile
-    0xFC14FE63, //VFS_Write
-    0xD4908D6E  //NtControlChannel
+    0x70CE7692,
+    0xD4CE4554,
+    0x7A99CFAE
 };
 
 MP_API g_MpApiSet;
 
 PVOID wdxGetProcedureAddressByHash(
     _In_ PVOID MpClientBase,
-    _In_ ULONG ProcedureHash);
+    _In_ DWORD ProcedureHash);
 
 /*
 * wdxInitApiSet
@@ -101,28 +112,28 @@ BOOL wdxInitApiSet(
     _In_ PVOID MpClientBase)
 {
     g_MpApiSet.WDStatus.Hash = WDStatus_Hash;
-    g_MpApiSet.WDStatus.Routine = wdxGetProcedureAddressByHash(
+    g_MpApiSet.WDStatus.Routine = (pfnMpRoutine)wdxGetProcedureAddressByHash(
         MpClientBase,
         g_MpApiSet.WDStatus.Hash);
 
     if (g_MpApiSet.WDStatus.Routine == NULL) return FALSE;
 
     g_MpApiSet.MpHandleClose.Hash = MpHandleClose_Hash;
-    g_MpApiSet.MpHandleClose.Routine = wdxGetProcedureAddressByHash(
+    g_MpApiSet.MpHandleClose.Routine = (pfnMpRoutine)wdxGetProcedureAddressByHash(
         MpClientBase,
         g_MpApiSet.MpHandleClose.Hash);
 
     if (g_MpApiSet.MpHandleClose.Routine == NULL) return FALSE;
 
     g_MpApiSet.MpManagerOpen.Hash = MpManagerOpen_Hash;
-    g_MpApiSet.MpManagerOpen.Routine = wdxGetProcedureAddressByHash(
+    g_MpApiSet.MpManagerOpen.Routine = (pfnMpRoutine)wdxGetProcedureAddressByHash(
         MpClientBase,
         g_MpApiSet.MpManagerOpen.Hash);
 
     if (g_MpApiSet.MpManagerOpen.Routine == NULL) return FALSE;
 
     g_MpApiSet.MpManagerVersionQuery.Hash = MpManagerVersionQuery_Hash;
-    g_MpApiSet.MpManagerVersionQuery.Routine = wdxGetProcedureAddressByHash(
+    g_MpApiSet.MpManagerVersionQuery.Routine = (pfnMpRoutine)wdxGetProcedureAddressByHash(
         MpClientBase,
         g_MpApiSet.MpManagerVersionQuery.Hash);
 
@@ -228,7 +239,7 @@ DWORD wdxGetHashForString(
 */
 PVOID wdxGetProcedureAddressByHash(
     _In_ PVOID MpClientBase,
-    _In_ ULONG ProcedureHash
+    _In_ DWORD ProcedureHash
 )
 {
     DWORD i;
@@ -243,7 +254,7 @@ PVOID wdxGetProcedureAddressByHash(
 
     DosHeader = (IMAGE_DOS_HEADER*)MpClientBase;
 
-    Exports = RtlImageDirectoryEntryToData(MpClientBase, TRUE,
+    Exports = (IMAGE_EXPORT_DIRECTORY*)RtlImageDirectoryEntryToData(MpClientBase, TRUE,
         IMAGE_DIRECTORY_ENTRY_EXPORT, &sz);
 
     if (Exports == NULL)
@@ -286,7 +297,7 @@ PVOID wdLoadClient(
     PVOID       ImageBase = NULL;
     NTSTATUS    status = STATUS_UNSUCCESSFUL;
 
-    PWCHAR EnvironmentBlock = NtCurrentPeb()->ProcessParameters->Environment;
+    PWCHAR EnvironmentBlock = (PWCHAR)NtCurrentPeb()->ProcessParameters->Environment;
     PWCHAR ptr, lpProgramFiles, lpBuffer;
 
     UNICODE_STRING usTemp, *us;
@@ -322,7 +333,7 @@ PVOID wdLoadClient(
         lpProgramFiles = (ptr + us->Length / sizeof(WCHAR));
 
         memIO = (MAX_PATH + _strlen(lpProgramFiles)) * sizeof(WCHAR);
-        lpBuffer = RtlAllocateHeap(hHeap, HEAP_ZERO_MEMORY, memIO);
+        lpBuffer = (PWCHAR)RtlAllocateHeap(hHeap, HEAP_ZERO_MEMORY, memIO);
         if (lpBuffer) {
             _strcpy(lpBuffer, lpProgramFiles);
             _strcat(lpBuffer, TEXT("\\Windows Defender\\MpClient.dll"));
@@ -404,10 +415,13 @@ NTSTATUS wdIsEmulatorPresent(
 
     UNICODE_STRING usNtdll = RTL_CONSTANT_STRING(L"ntdll.dll");
 
-    if (!NT_SUCCESS(LdrGetDllHandle(NULL, NULL, &usNtdll, &ImageBase)))
+    if (!NT_SUCCESS(LdrGetDllHandleEx(LDR_GET_DLL_HANDLE_EX_UNCHANGED_REFCOUNT,
+        NULL, NULL, &usNtdll, &ImageBase)))
+    {
         return STATUS_DLL_NOT_FOUND;
+    }
 
-    Exports = RtlImageDirectoryEntryToData(ImageBase, TRUE,
+    Exports = (IMAGE_EXPORT_DIRECTORY*)RtlImageDirectoryEntryToData(ImageBase, TRUE,
         IMAGE_DIRECTORY_ENTRY_EXPORT, &sz);
 
     if (Exports == NULL)
@@ -418,7 +432,7 @@ NTSTATUS wdIsEmulatorPresent(
 
     for (i = 0; i < Exports->NumberOfNames; i++) {
         Hash = wdxGetHashForString((char *)((PBYTE)DosHeader + Names[i]));
-        for (c = 0; c < WD_HASH_TABLE_ITEMS; c++) {
+        for (c = 0; c < RTL_NUMBER_OF(wdxEmulatorAPIHashTable); c++) {
             if (Hash == wdxEmulatorAPIHashTable[c])
                 return STATUS_NEEDS_REMEDIATION;
         }
@@ -428,23 +442,21 @@ NTSTATUS wdIsEmulatorPresent(
 }
 
 /*
-* wdSelfTraverse
+* wdIsEmulatorPresent2
 *
 * Purpose:
 *
-* Determine if we can use Kuma to send a torpedo to the WD.
+* Detect MS emulator state 2.
+*
+* Microsoft AV defines virtual environment dlls loaded in runtime from VDM files.
+* These fake libraries implement additional detection layer and come with a lot of
+* predefined values.
 *
 */
-NTSTATUS wdSelfTraverse(
-    _In_ PVOID MpClientBase)
-{
-    UNREFERENCED_PARAMETER(MpClientBase);
-
-    //  
-    // Note: wdxInitApiSet must reflect difference between versions otherwise Kuma will fail.
-    //
-
-    return STATUS_NOT_IMPLEMENTED;
+BOOLEAN wdIsEmulatorPresent2(
+    VOID)
+{   
+    return NtIsProcessInJob(NtCurrentProcess(), UlongToHandle(10)) == 0x125;
 }
 
 #pragma warning(pop)

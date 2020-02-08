@@ -1,12 +1,12 @@
 /*******************************************************************************
 *
-*  (C) COPYRIGHT AUTHORS, 2017 - 2018
+*  (C) COPYRIGHT AUTHORS, 2017 - 2019
 *
 *  TITLE:       UTIL.H
 *
-*  VERSION:     3.00
+*  VERSION:     3.17
 *
-*  DATE:        27 Aug 2018
+*  DATE:        19 Mar 2019
 *
 *  Global support routines header file shared between payload dlls.
 *
@@ -18,9 +18,15 @@
 *******************************************************************************/
 #pragma once
 
-typedef NTSTATUS(NTAPI *PENUMOBJECTSCALLBACK)(
-    POBJECT_DIRECTORY_INFORMATION Entry,
-    PVOID CallbackParam);
+typedef struct _UACME_PARAM_BLOCK {
+    ULONG Crc32;
+    ULONG SessionId;
+    ULONG AkagiFlag;
+    WCHAR szParameter[MAX_PATH + 1];
+    WCHAR szDesktop[MAX_PATH + 1];
+    WCHAR szWinstation[MAX_PATH + 1];
+    WCHAR szSignalObject[MAX_PATH + 1];
+} UACME_PARAM_BLOCK, *PUACME_PARAM_BLOCK;
 
 typedef BOOL(WINAPI* PFNCREATEPROCESSW)(
     LPCWSTR lpApplicationName,
@@ -33,15 +39,6 @@ typedef BOOL(WINAPI* PFNCREATEPROCESSW)(
     LPCWSTR lpCurrentDirectory,
     LPSTARTUPINFOW lpStartupInfo,
     LPPROCESS_INFORMATION lpProcessInformation);
-
-typedef struct tagUCM_PROCESS_MITIGATION_POLICIES {
-    PROCESS_MITIGATION_EXTENSION_POINT_DISABLE_POLICY ExtensionPointDisablePolicy;
-    PROCESS_MITIGATION_DYNAMIC_CODE_POLICY_W10 DynamicCodePolicy;
-    PROCESS_MITIGATION_BINARY_SIGNATURE_POLICY_W10 SignaturePolicy;
-    PROCESS_MITIGATION_IMAGE_LOAD_POLICY_W10 ImageLoadPolicy;
-    PROCESS_MITIGATION_SYSTEM_CALL_FILTER_POLICY_W10 SystemCallFilterPolicy;
-    PROCESS_MITIGATION_PAYLOAD_RESTRICTION_POLICY_W10 PayloadRestrictionPolicy;
-} UCM_PROCESS_MITIGATION_POLICIES, *PUCM_PROCESS_MITIGATION_POLICIES;
 
 typedef struct _OBJSCANPARAM {
     PWSTR Buffer;
@@ -61,25 +58,8 @@ BOOLEAN ucmPrivilegeEnabled(
     _In_ HANDLE hToken,
     _In_ ULONG Privilege);
 
-NTSTATUS ucmReadValue(
-    _In_ HANDLE hKey,
-    _In_ LPWSTR ValueName,
-    _In_ DWORD ValueType,
-    _Out_ PVOID *Buffer,
-    _Out_ ULONG *BufferSize);
-
 NTSTATUS ucmCreateSyncMutant(
     _Out_ PHANDLE phMutant);
-
-NTSTATUS NTAPI ucmEnumSystemObjects(
-    _In_opt_ LPWSTR pwszRootDirectory,
-    _In_opt_ HANDLE hRootDirectory,
-    _In_ PENUMOBJECTSCALLBACK CallbackProc,
-    _In_opt_ PVOID CallbackParam);
-
-NTSTATUS NTAPI ucmDetectObjectCallback(
-    _In_ POBJECT_DIRECTORY_INFORMATION Entry,
-    _In_ PVOID CallbackParam);
 
 LPVOID ucmLdrGetProcAddress(
     _In_ PCHAR ImageBase,
@@ -111,13 +91,6 @@ BOOL ucmLaunchPayload2(
     _In_opt_ LPWSTR pszPayload,
     _In_opt_ DWORD cbPayload);
 
-BOOL ucmReadParameters(
-    _Inout_ PWSTR *pszParamBuffer,
-    _Inout_ ULONG *cbParamBuffer,
-    _Inout_opt_ PDWORD pdwGlobalFlag,
-    _Inout_opt_ PDWORD pdwSessionId,
-    _In_ BOOL IsSystem);
-
 LPWSTR ucmQueryRuntimeInfo(
     _In_ BOOL ReturnData);
 
@@ -141,19 +114,23 @@ wchar_t *sxsFilePathNoSlash(
 BOOL sxsFindLoaderEntry(
     _In_ PSXS_SEARCH_CONTEXT Context);
 
-UCM_PROCESS_MITIGATION_POLICIES *ucmGetRemoteCodeExecPolicies(
-    _In_ HANDLE hProcess);
-
-BOOL ucmGetProcessMitigationPolicy(
-    _In_ HANDLE hProcess,
-    _In_ PROCESS_MITIGATION_POLICY Policy,
-    _In_ SIZE_T Size,
-    _Out_writes_bytes_(Size) PVOID Buffer);
+HANDLE ucmOpenAkagiNamespace(
+    VOID);
 
 _Success_(return == TRUE)
-BOOL ucmQueryProcessTokenIL(
-    _In_ HANDLE hProcess,
-    _Out_ PULONG IntegrityLevel);
+BOOL ucmReadSharedParameters(
+    _Out_ UACME_PARAM_BLOCK *SharedParameters);
+
+VOID ucmSetCompletion(
+    _In_ LPWSTR lpEvent);
+
+BOOL ucmGetProcessElevationType(
+    _In_opt_ HANDLE ProcessHandle,
+    _Out_ TOKEN_ELEVATION_TYPE *lpType);
+
+NTSTATUS ucmIsProcessElevated(
+    _In_ ULONG ProcessId,
+    _Out_ PBOOL Elevated);
 
 #ifdef _DEBUG
 #define ucmDbgMsg(Message)  OutputDebugString(Message)

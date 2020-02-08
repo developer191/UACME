@@ -33,9 +33,6 @@
     <ClInclude Include="..\Shared\util.h">
       <Filter>shared</Filter>
     </ClInclude>
-    <ClInclude Include="..\Shared\lsa.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="..\Shared\windefend.h">
       <Filter>shared</Filter>
     </ClInclude>
@@ -46,6 +43,18 @@
       <Filter>shared</Filter>
     </ClInclude>
     <ClInclude Include="..\Shared\_filename.h">
+      <Filter>minirtl</Filter>
+    </ClInclude>
+    <ClInclude Include="wbemcomn.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="winmm.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="uihacks.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Shared\cmdline.h">
       <Filter>minirtl</Filter>
     </ClInclude>
   </ItemGroup>
@@ -95,6 +104,12 @@
       <Filter>shared</Filter>
     </ClCompile>
     <ClCompile Include="..\Shared\ultohex.c">
+      <Filter>minirtl</Filter>
+    </ClCompile>
+    <ClCompile Include="uihacks.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Shared\cmdline.c">
       <Filter>minirtl</Filter>
     </ClCompile>
   </ItemGroup>

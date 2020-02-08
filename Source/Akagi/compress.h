@@ -1,12 +1,12 @@
 /*******************************************************************************
 *
-*  (C) COPYRIGHT AUTHORS, 2014 - 2018
+*  (C) COPYRIGHT AUTHORS, 2014 - 2019
 *
 *  TITLE:       COMPRESS.H
 *
-*  VERSION:     3.00
+*  VERSION:     3.21
 *
-*  DATE:        25 Aug 2018
+*  DATE:        26 Oct 2019
 *
 *  Prototypes and definitions for compression.
 *
@@ -114,5 +114,24 @@ BOOL ProcessFileMZ(
     PVOID *OutputFileBuffer,
     PSIZE_T OutputFileBufferSize);
 
+VOID EncodeBuffer(
+    _In_ PVOID Buffer,
+    _In_ ULONG BufferSize,
+    _In_ ULONG Key);
+
 BOOL InitCabinetDecompressionAPI(
     VOID);
+
+VOID EncryptBufferMB(
+    _In_ PBYTE Buffer,
+    _In_ SIZE_T	BufferSize);
+
+VOID DecryptBufferMB(
+    _In_ PBYTE Buffer,
+    _In_ SIZE_T	BufferSize);
+
+_Success_(return == TRUE)
+BOOLEAN DecodeStringById(
+    _In_ ULONG Id,
+    _Inout_ LPWSTR lpBuffer,
+    _In_ SIZE_T cbBuffer);

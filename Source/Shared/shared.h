@@ -4,9 +4,9 @@
 *
 *  TITLE:       SHARED.H
 *
-*  VERSION:     3.00
+*  VERSION:     3.10
 *
-*  DATE:        25 Aug 2018
+*  DATE:        18 Nov 2018
 *
 *  Shared include header file.
 *
@@ -27,10 +27,19 @@
 #include <Windows.h>
 #include <ntstatus.h>
 #include "ntos.h"
-#include "lsa.h"
+
+#define _NTDEF_
+#include <ntsecapi.h>
+#undef _NTDEF_
+
 #include "minirtl.h"
 #include "_filename.h"
 #include "util.h"
 #include "windefend.h"
+#include "consts.h"
+
+#if defined(__cplusplus)
+#include <malloc.h>
+#endif
 
 #pragma warning(pop)

